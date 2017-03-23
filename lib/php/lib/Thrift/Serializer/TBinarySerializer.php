@@ -40,9 +40,12 @@ class TBinarySerializer
   // normal deserialization.
   public static function serialize($object)
   {
+    // 如何序列化一个对象呢?
     $transport = new TMemoryBuffer();
     $protocol = new TBinaryProtocolAccelerated($transport);
+
     if (function_exists('thrift_protocol_write_binary')) {
+      // 通过binary来序列化
       thrift_protocol_write_binary($protocol, $object->getName(),
                                    TMessageType::REPLY, $object,
                                    0, $protocol->isStrictWrite());
@@ -50,13 +53,16 @@ class TBinarySerializer
       $protocol->readMessageBegin($unused_name, $unused_type,
                                   $unused_seqid);
     } else {
+      // 通过write来序列化
       $object->write($protocol);
     }
+
     $protocol->getTransport()->flush();
 
     return $transport->getBuffer();
   }
 
+  // 如何反序列化呢?
   public static function deserialize($string_object, $class_name, $buffer_size  = 8192)
   {
      $transport = new TMemoryBuffer();
@@ -75,6 +81,7 @@ class TBinarySerializer
                                           $protocol->isStrictRead(),
                                           $buffer_size);
      } else {
+       // transport --> object read
        $transport->write($string_object);
        $object = new $class_name();
        $object->read($protocol);

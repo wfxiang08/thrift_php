@@ -91,6 +91,7 @@ class ThriftClassLoader
      */
     public function register($prepend = false)
     {
+        // 如何注册自己呢?
         spl_autoload_register(array($this, 'loadClass'), true, $prepend);
     }
 
@@ -101,6 +102,9 @@ class ThriftClassLoader
      */
     public function loadClass($class)
     {
+        // apc 和 non apc的区别?
+        // 如何加载Class呢?
+        // 在指定的搜索路径下, 搜索指定的Class, 并且require对应的php文件
         if (
             (true === $this->apc && ($file = $this->findFileInApc($class))) or
             ($file = $this->findFile($class))

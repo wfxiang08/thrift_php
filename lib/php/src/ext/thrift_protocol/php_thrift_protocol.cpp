@@ -95,12 +95,14 @@ const int8_t T_EXCEPTION = 3;
 const int INVALID_DATA = 1;
 const int BAD_VERSION = 4;
 
+// 定义php的接口导出
 static zend_function_entry thrift_protocol_functions[] = {
   PHP_FE(thrift_protocol_write_binary, NULL)
   PHP_FE(thrift_protocol_read_binary, NULL)
   {NULL, NULL, NULL}
 } ;
 
+// 定义module
 zend_module_entry thrift_protocol_module_entry = {
   STANDARD_MODULE_HEADER,
   "thrift_protocol",
@@ -118,6 +120,7 @@ zend_module_entry thrift_protocol_module_entry = {
 ZEND_GET_MODULE(thrift_protocol)
 #endif
 
+// 定义Exception
 class PHPExceptionWrapper : public std::exception {
 public:
   PHPExceptionWrapper(zval* _ex) throw() : ex(_ex) {
@@ -131,6 +134,7 @@ protected:
   char _what[40];
 } ;
 
+// 定义Transport
 class PHPTransport {
 public:
   zval* protocol() { return p; }
@@ -168,6 +172,7 @@ protected:
 };
 
 
+// 实现各种序列化
 class PHPOutputTransport : public PHPTransport {
 public:
   PHPOutputTransport(zval* _p, size_t _buffer_size = 8192) {
@@ -909,8 +914,12 @@ void binary_serialize_spec(zval* zthis, PHPOutputTransport& transport, HashTable
   TSRMLS_FETCH();
   zend_class_entry* ce = zend_get_class_entry(zthis TSRMLS_CC);
 
+  // 遍历: spec hashmap
   for (zend_hash_internal_pointer_reset_ex(spec, &key_ptr); zend_hash_get_current_data_ex(spec, (void**)&val_ptr, &key_ptr) == SUCCESS; zend_hash_move_forward_ex(spec, &key_ptr)) {
+    // key_ptr, val_ptr
     ulong fieldno;
+
+    // 获取fieldno
     if (zend_hash_get_current_key_ex(spec, NULL, NULL, &fieldno, 0, &key_ptr) != HASH_KEY_IS_LONG) {
       throw_tprotocolexception("Bad keytype in TSPEC (expected 'long')", INVALID_DATA);
       return;
@@ -926,32 +935,41 @@ void binary_serialize_spec(zval* zthis, PHPOutputTransport& transport, HashTable
     if (Z_TYPE_PP(val_ptr) != IS_LONG) convert_to_long(*val_ptr);
     int8_t ttype = Z_LVAL_PP(val_ptr);
 
+    // 读取property, 如果对应的property为Null, 则不序列化
     zval* prop = zend_read_property(ce, zthis, varname, strlen(varname), false TSRMLS_CC);
     if (Z_TYPE_P(prop) != IS_NULL) {
       transport.writeI8(ttype);
       transport.writeI16(fieldno);
+
+      // 继续递归调用
       binary_serialize(ttype, transport, &prop, fieldspec);
     }
   }
+
+  // 结束结构体
   transport.writeI8(T_STOP); // struct end
 }
 
 // 6 params: $transport $method_name $ttype $request_struct $seqID $strict_write
 PHP_FUNCTION(thrift_protocol_write_binary) {
+  // 如何实现php函数呢?
   int argc = ZEND_NUM_ARGS();
   if (argc < 6) {
     WRONG_PARAM_COUNT;
   }
 
+  // 如何获取参数信息
   zval ***args = (zval***) emalloc(argc * sizeof(zval**));
   zend_get_parameters_array_ex(argc, args);
 
+  // 第一个参数为: transport
   if (Z_TYPE_PP(args[0]) != IS_OBJECT) {
     php_error_docref(NULL TSRMLS_CC, E_ERROR, "1st parameter is not an object (transport)");
     efree(args);
     RETURN_NULL();
   }
 
+  // 第二个参数为: $method_name
   if (Z_TYPE_PP(args[1]) != IS_STRING) {
     php_error_docref(NULL TSRMLS_CC, E_ERROR, "2nd parameter is not a string (method name)");
     efree(args);
@@ -964,11 +982,14 @@ PHP_FUNCTION(thrift_protocol_write_binary) {
     RETURN_NULL();
   }
 
-
+  // 如何处理呢?
   try {
+    // 封装成为C++版本的transport
     PHPOutputTransport transport(*args[0]);
+
     zval *protocol = *args[0];
     const char* method_name = Z_STRVAL_PP(args[1]);
+
     convert_to_long(*args[2]);
     int32_t msgtype = Z_LVAL_PP(args[2]);
     zval* request_struct = *args[3];
@@ -978,11 +999,17 @@ PHP_FUNCTION(thrift_protocol_write_binary) {
     bool strictWrite = Z_BVAL_PP(args[5]);
     efree(args);
     args = NULL;
+
+    // 开始消息
     protocol_writeMessageBegin(protocol, method_name, msgtype, seqID);
+
+    // 读取php中的_TSpec
     zval* spec = zend_read_static_property(zend_get_class_entry(request_struct TSRMLS_CC), "_TSPEC", 6, false TSRMLS_CC);
     if (Z_TYPE_P(spec) != IS_ARRAY) {
         throw_tprotocolexception("Attempt to send non-Thrift object", INVALID_DATA);
     }
+
+    // 根据Spec来序列化
     binary_serialize_spec(request_struct, transport, Z_ARRVAL_P(spec));
     transport.flush();
   } catch (const PHPExceptionWrapper& ex) {
